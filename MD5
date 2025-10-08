@@ -1,0 +1,15 @@
+bb0f589c891fce781f1a467f1f809c7f *DESCRIPTION
+9cd30190c4f669b9ef745892de79883a *NAMESPACE
+263ba270a09e4c5e0600d0e8b977beac *R/colsMean.R
+cae256c1f6bbebd57cd30839ee68f6b1 *R/merge.R
+3330c4a910131699db762c1f75712b32 *R/ml_f.R
+fccb83f25c25d6bed61a73a9d7f4954f *R/ml_models.R
+75a142a1c6d75845931715017ac1ca92 *R/msd.comp.R
+61e2721ed64f44c9c358c1de53dea8a5 *R/results.R
+796ac22ea8e05ce68dcc6fa68067bc9d *R/sg.R
+ae9f1453d07c2f14c0052bd066043d07 *man/colsMean.Rd
+b825e2662d89e71df02d7d66ceefd538 *man/merge_of_lab_and_spectrum.Rd
+da7d99195e81aa11fa54e5cbe8da2fd3 *man/ml_f.Rd
+5a7586be4d3cd2e9df426b172b329c35 *man/msd.comp.Rd
+3fb1c916ebb222f9376d6b966732b5ca *man/raw.Rd
+2221e4944871ade88dc5d447896b3d55 *man/soil_preprocess.Rd
