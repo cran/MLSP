@@ -1,83 +1,96 @@
 #' Merge Soil Laboratory Data with Spectral Data
 #'
-#' This function merges soil laboratory data with cleaned spectral (VNIR) data, 
-#' performs preprocessing, and prepares inputs for calibration and model building.  
+#' Averages replicate scans of each sample, matches the spectra to the soil
+#' laboratory data, and creates repeated random calibration/validation splits
+#' used by every model in \code{\link{ml_f}}.
 #'
-#' @param soil_data A data frame containing soil laboratory measurements (must include a column named \code{LAB_NUM}).
-#' @param data_NaturaSpec_cleaned A data frame containing cleaned spectral data 
-#'   with columns \code{Wavelength}, \code{LAB_NUM}, and reflectance values.
+#' @param soil_data A data frame of soil laboratory data with a sample
+#'   identifier column (default \code{LAB_NUM}) and one column per soil property.
+#' @param data_NaturaSpec_cleaned A data frame of spectra with a sample
+#'   identifier column (default \code{Wavelength}, matching \code{LAB_NUM})
+#'   and 2151 reflectance columns (350-2500 nm at 1 nm). Several rows (scans)
+#'   per sample are averaged.
+#' @param soil_id Name of the identifier column in \code{soil_data}.
+#' @param spec_id Name of the identifier column in \code{data_NaturaSpec_cleaned}.
+#' @param n_splits Number of random calibration/validation splits.
+#' @param cal_prop Proportion of samples in each calibration set.
 #'
 #' @details
-#' The function performs the following steps:
-#' \itemize{
-#'   \item Aggregates spectral data by wavelength and computes mean reflectance values.
-#'   \item Merges the soil and spectral datasets by \code{LAB_NUM}.
-#'   \item Separates soil variables and VNIR spectral matrix.
-#'   \item Creates calibration sample indices using random sampling.
-#'   \item Defines spectral bands to remove (detector artifact areas) and 
-#'         indices to be used in modeling.
-#' }
+#' Splits are drawn with \code{\link[base]{sample}}; call
+#' \code{\link[base]{set.seed}} beforehand for reproducible results. All
+#' preprocessing and calibration methods are evaluated on the same splits, so
+#' their accuracy metrics are directly comparable.
 #'
-#' @return A list with the following elements:
+#' @return A named list:
 #' \describe{
-#'   \item{soil}{Data frame of soil laboratory data (first 8 columns of merged dataset).}
-#'   \item{vnir.matrix}{Matrix of VNIR spectral reflectance values (without metadata columns).}
-#'   \item{j}{List of calibration sample indices for cross-validation (4 sets).}
-#'   \item{rm1, rm2, rm3, rm4}{Vectors of indices corresponding to spectral bands to be removed 
-#'         (detector artifact regions around 1000 nm and 1800 nm).}
-#'   \item{ind}{Indices of spectral bands used for aggregation (columns 7–2146).}
-#'   \item{rmove}{Indices of bands to be excluded from analysis.}
-#'   \item{vars}{Vector of spectral band names retained after removal.}
+#'   \item{soil}{Soil laboratory data for the matched samples (identifier first).}
+#'   \item{vnir.matrix}{Matrix of averaged reflectance (2151 columns).}
+#'   \item{j}{List of \code{n_splits} vectors of calibration-row indices.}
+#'   \item{rm1, rm2, rm3, rm4}{Indices of the 1-nm bands excluded as edges or
+#'     detector artifacts (350-395, 986-1015, 1786-1815, and 2476-2500 nm).}
+#'   \item{ind}{Indices of the 1-nm bands averaged into 10-nm bands.}
+#'   \item{rmove}{Indices of the 10-nm bands removed after averaging.}
+#'   \item{vars}{Names of the 202 retained 10-nm bands.}
 #' }
 #'
 #' @examples
-#' \donttest{
-#' merged <- merge_of_lab_and_spectrum(soil_data, data_NaturaSpec_cleaned)
-#' str(merged)
-#' }
+#' # Simulated data: 50 soil samples scanned at 350-2500 nm (2151 bands).
+#' set.seed(1)
+#' n <- 50
+#' wl <- 350:2500
+#' soc <- runif(n, 0.5, 4)
+#' spec <- t(sapply(soc, function(s)
+#'   0.5 - 0.05 * s * exp(-((wl - 1400) / 600)^2) + rnorm(length(wl), 0, 0.01)))
+#' colnames(spec) <- wl
+#' spectra <- data.frame(Wavelength = 1:n, spec, check.names = FALSE)
+#' soil_data <- data.frame(LAB_NUM = 1:n, SOC = soc, clay = runif(n, 5, 40),
+#'   pH = runif(n, 5, 8))
+#' merged <- merge_of_lab_and_spectrum(soil_data, spectra)
+#' str(merged[1:3], max.level = 1)
 #'
-#' @importFrom stats aggregate merge
+#' @importFrom stats aggregate
 #'
 #' @export
-merge_of_lab_and_spectrum <- function(soil_data, data_NaturaSpec_cleaned) {
-  
-  NS_Spectral <- aggregate(
-    x = data_NaturaSpec_cleaned,
-    by = list(data_NaturaSpec_cleaned$Wavelength),
-    FUN = mean
-  )
-  
-  colnames(NS_Spectral)[1] <- "LAB_NUM"
-  
-  Soil_NS_Spectral <- merge(soil_data, NS_Spectral, by = "LAB_NUM")
-  Soil_NS_Spectral_master <- Soil_NS_Spectral[, -9]
-  soil <- Soil_NS_Spectral_master[, c(1:8)]
-  
-  soil.var <- names(soil) # include lab_num
-  
-  # VNIR data source file
-  vnir <- Soil_NS_Spectral_master[, -c(2:8)]
-  vnir.matrix <- vnir[, -1]
-  
-  ## sample and variables
-  n.smpl <- nrow(vnir)         # number of samples
-  ncal <- round(n.smpl * .7, 0) # calibration set size
-  
-  j <- list()
-  for (jj in 1:4) {
-    j[[jj]] <- sample(1:n.smpl, ncal)
+merge_of_lab_and_spectrum <- function(soil_data, data_NaturaSpec_cleaned,
+                                      soil_id = "LAB_NUM", spec_id = "Wavelength",
+                                      n_splits = 4, cal_prop = 0.7) {
+  spectra <- data_NaturaSpec_cleaned
+  if (!soil_id %in% names(soil_data)) {
+    stop(sprintf("'soil_data' has no identifier column '%s'.", soil_id), call. = FALSE)
   }
-  
-  rm1 <- c(seq.int(1, 46, 1))
-  rm2 <- c(seq.int(637, 666, 1))
-  rm3 <- c(seq.int(1437, 1466, 1))
-  rm4 <- c(seq.int(2127, 2151, 1)) # detector artifact areas
-  
-  ind <- 7:2146   # indices used in aggregation
-  rmove <- c(1:4, 64:66, 144:146, 213:214) # remove these bands
-  
-  vars <- names(vnir.matrix[, seq(11, 2141, 10)])
-  vars <- vars[-rmove]  # retained band names
-  
-  return(list(soil, vnir.matrix, j, rm1, rm2, rm3, rm4, ind, rmove, vars))
+  if (!spec_id %in% names(spectra)) {
+    stop(sprintf("The spectral data have no identifier column '%s'.", spec_id), call. = FALSE)
+  }
+  band_cols <- setdiff(names(spectra), spec_id)
+  if (length(band_cols) != 2151) {
+    stop(sprintf(paste0("The spectral data must have 2151 reflectance columns ",
+                        "(350-2500 nm) besides '%s'; found %d."),
+                 spec_id, length(band_cols)), call. = FALSE)
+  }
+
+  # Average replicate scans per sample
+  spec_mean <- aggregate(spectra[, band_cols, drop = FALSE],
+                         by = list(.id = spectra[[spec_id]]), FUN = mean)
+  names(spec_mean)[1] <- soil_id
+
+  merged <- merge(soil_data, spec_mean, by = soil_id, sort = TRUE)
+  if (nrow(merged) < 10) {
+    stop(sprintf("Only %d samples matched between the soil and spectral data.",
+                 nrow(merged)), call. = FALSE)
+  }
+  soil <- merged[, names(soil_data), drop = FALSE]
+  vnir.matrix <- merged[, band_cols, drop = FALSE]
+
+  n.smpl <- nrow(merged)
+  ncal <- round(n.smpl * cal_prop)
+  j <- lapply(seq_len(n_splits), function(k) sort(sample(seq_len(n.smpl), ncal)))
+
+  rm1 <- 1:46; rm2 <- 637:666; rm3 <- 1437:1466; rm4 <- 2127:2151
+  ind <- 7:2146
+  rmove <- c(1:4, 64:66, 144:146, 213:214)
+  vars <- band_cols[seq(11, 2141, 10)][-rmove]
+
+  list(soil = soil, vnir.matrix = vnir.matrix, j = j,
+       rm1 = rm1, rm2 = rm2, rm3 = rm3, rm4 = rm4,
+       ind = ind, rmove = rmove, vars = vars)
 }

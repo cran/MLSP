@@ -4,46 +4,69 @@
 \alias{merge_of_lab_and_spectrum}
 \title{Merge Soil Laboratory Data with Spectral Data}
 \usage{
-merge_of_lab_and_spectrum(soil_data, data_NaturaSpec_cleaned)
+merge_of_lab_and_spectrum(
+  soil_data,
+  data_NaturaSpec_cleaned,
+  soil_id = "LAB_NUM",
+  spec_id = "Wavelength",
+  n_splits = 4,
+  cal_prop = 0.7
+)
 }
 \arguments{
-\item{soil_data}{A data frame containing soil laboratory measurements (must include a column named \code{LAB_NUM}).}
+\item{soil_data}{A data frame of soil laboratory data with a sample
+identifier column (default \code{LAB_NUM}) and one column per soil property.}
 
-\item{data_NaturaSpec_cleaned}{A data frame containing cleaned spectral data 
-with columns \code{Wavelength}, \code{LAB_NUM}, and reflectance values.}
+\item{data_NaturaSpec_cleaned}{A data frame of spectra with a sample
+identifier column (default \code{Wavelength}, matching \code{LAB_NUM})
+and 2151 reflectance columns (350-2500 nm at 1 nm). Several rows (scans)
+per sample are averaged.}
+
+\item{soil_id}{Name of the identifier column in \code{soil_data}.}
+
+\item{spec_id}{Name of the identifier column in \code{data_NaturaSpec_cleaned}.}
+
+\item{n_splits}{Number of random calibration/validation splits.}
+
+\item{cal_prop}{Proportion of samples in each calibration set.}
 }
 \value{
-A list with the following elements:
+A named list:
 \describe{
-  \item{soil}{Data frame of soil laboratory data (first 8 columns of merged dataset).}
-  \item{vnir.matrix}{Matrix of VNIR spectral reflectance values (without metadata columns).}
-  \item{j}{List of calibration sample indices for cross-validation (4 sets).}
-  \item{rm1, rm2, rm3, rm4}{Vectors of indices corresponding to spectral bands to be removed 
-        (detector artifact regions around 1000 nm and 1800 nm).}
-  \item{ind}{Indices of spectral bands used for aggregation (columns 7–2146).}
-  \item{rmove}{Indices of bands to be excluded from analysis.}
-  \item{vars}{Vector of spectral band names retained after removal.}
+  \item{soil}{Soil laboratory data for the matched samples (identifier first).}
+  \item{vnir.matrix}{Matrix of averaged reflectance (2151 columns).}
+  \item{j}{List of \code{n_splits} vectors of calibration-row indices.}
+  \item{rm1, rm2, rm3, rm4}{Indices of the 1-nm bands excluded as edges or
+    detector artifacts (350-395, 986-1015, 1786-1815, and 2476-2500 nm).}
+  \item{ind}{Indices of the 1-nm bands averaged into 10-nm bands.}
+  \item{rmove}{Indices of the 10-nm bands removed after averaging.}
+  \item{vars}{Names of the 202 retained 10-nm bands.}
 }
 }
 \description{
-This function merges soil laboratory data with cleaned spectral (VNIR) data, 
-performs preprocessing, and prepares inputs for calibration and model building.
+Averages replicate scans of each sample, matches the spectra to the soil
+laboratory data, and creates repeated random calibration/validation splits
+used by every model in \code{\link{ml_f}}.
 }
 \details{
-The function performs the following steps:
-\itemize{
-  \item Aggregates spectral data by wavelength and computes mean reflectance values.
-  \item Merges the soil and spectral datasets by \code{LAB_NUM}.
-  \item Separates soil variables and VNIR spectral matrix.
-  \item Creates calibration sample indices using random sampling.
-  \item Defines spectral bands to remove (detector artifact areas) and 
-        indices to be used in modeling.
-}
+Splits are drawn with \code{\link[base]{sample}}; call
+\code{\link[base]{set.seed}} beforehand for reproducible results. All
+preprocessing and calibration methods are evaluated on the same splits, so
+their accuracy metrics are directly comparable.
 }
 \examples{
-\donttest{
-merged <- merge_of_lab_and_spectrum(soil_data, data_NaturaSpec_cleaned)
-str(merged)
-}
+# Simulated data: 50 soil samples scanned at 350-2500 nm (2151 bands).
+set.seed(1)
+n <- 50
+wl <- 350:2500
+soc <- runif(n, 0.5, 4)
+spec <- t(sapply(soc, function(s)
+  0.5 - 0.05 * s * exp(-((wl - 1400) / 600)^2) + rnorm(length(wl), 0, 0.01)))
+colnames(spec) <- wl
+spectra <- data.frame(Wavelength = 1:n, spec, check.names = FALSE)
+soil_data <- data.frame(LAB_NUM = 1:n, SOC = soc, clay = runif(n, 5, 40),
+  pH = runif(n, 5, 8))
+merged <- merge_of_lab_and_spectrum(soil_data, spectra)
+str(merged[1:3], max.level = 1)
 
 }

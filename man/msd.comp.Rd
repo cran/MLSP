@@ -35,10 +35,8 @@ This function computes various statistics for comparing observed values `y` with
 It includes correlation, regression coefficients, bias, RMSE, MSE, and predictive performance metrics like RPD and RPIQ.
 }
 \examples{
-\donttest{
 y_obs <- c(1.2, 3.4, 2.5, 4.1)
 y_pred <- c(1.1, 3.5, 2.4, 4.0)
 msd.comp(y_obs, y_pred)
-}
 
 }

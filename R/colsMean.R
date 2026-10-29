@@ -19,26 +19,11 @@
 #'
 #' @export
 colsMean <- function(x, ncols){
-  # Convert input to data frame
-  x <- data.frame(x)
-  
-  # Calculate how many groups of columns we will have
-  times <- length(x)/ncols
-  
-  # Check if ncols divides evenly into number of columns
-  if(round(times) != times) stop(paste("Number of columns not divisible by", ncols))
-  
-  # Initialize an empty matrix to store results
-  temp <- matrix(NA, ncol = 0, nrow = nrow(x))
-  
-  # Sequence of starting indices for each group of columns
-  index <- seq(1, length(x), by = ncols)
-  
-  # Loop through each group and compute row-wise mean
-  for(i in 1:times){
-    temp <- cbind(temp, apply(x[, index[i]:(index[i] + ncols - 1)], MARGIN = 1, FUN = mean))
-  }
-  
-  # Return result matrix
-  return(temp)
+  x <- as.matrix(x)
+  times <- ncol(x) / ncols
+  if (round(times) != times) stop(paste("Number of columns not divisible by", ncols))
+  starts <- seq(1, ncol(x), by = ncols)
+  out <- vapply(starts, function(s) rowMeans(x[, s:(s + ncols - 1), drop = FALSE]),
+                numeric(nrow(x)))
+  matrix(out, nrow = nrow(x))
 }

@@ -25,21 +25,24 @@
 #' }
 #'
 #' @examples
-#' \donttest{
 #' y_obs <- c(1.2, 3.4, 2.5, 4.1)
 #' y_pred <- c(1.1, 3.5, 2.4, 4.0)
 #' msd.comp(y_obs, y_pred)
-#' }
 #'
 #' @export
 msd.comp <- function(y, yhat){
   n <- length(y)
-  r <- cor(y, yhat)
-  
-  lmy <- lm(y ~ yhat)
-  a <- coefficients(lmy)[1]
-  b <- coefficients(lmy)[2]
-  r2 <- summary(lmy)$r.squared[1]
+  if (isTRUE(stats::sd(yhat) > 0)) {
+    r <- cor(y, yhat)
+    lmy <- lm(y ~ yhat)
+    a <- coefficients(lmy)[1]
+    b <- coefficients(lmy)[2]
+    r2 <- summary(lmy)$r.squared[1]
+  } else {
+    # Constant predictions (e.g., a LASSO model with no selected bands):
+    # correlation and slope are undefined and no variance is explained.
+    r <- NA_real_; a <- NA_real_; b <- NA_real_; r2 <- 0
+  }
   
   bias <- mean(yhat) - mean(y)
   mse <- sum((yhat - y)^2) / n
